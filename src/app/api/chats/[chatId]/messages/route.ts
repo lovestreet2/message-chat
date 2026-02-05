@@ -3,41 +3,63 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 
+export const dynamic = "force-dynamic"; // ✅ REQUIRED
+
+/* ---------- Types ---------- */
+
 type AccessResult =
     | { ok: true; userId: string }
     | { ok: false; response: NextResponse };
 
+type CreateMessageBody = {
+    content: string;
+};
+
+/* ---------- Helpers ---------- */
+
 async function requireRoomAccess(chatId: string): Promise<AccessResult> {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
+
+    if (!session?.user?.id) {
         return {
             ok: false,
-            response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+            response: NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 }
+            ),
         };
     }
 
-    const userId = (session.user as any).id as string;
+    const userId = session.user.id;
 
     const room = await prisma.room.findFirst({
-        where: { id: chatId, members: { some: { userId } } },
+        where: {
+            id: chatId,
+            members: { some: { userId } },
+        },
         select: { id: true },
     });
 
     if (!room) {
         return {
             ok: false,
-            response: NextResponse.json({ error: "Not found" }, { status: 404 }),
+            response: NextResponse.json(
+                { error: "Not found" },
+                { status: 404 }
+            ),
         };
     }
 
     return { ok: true, userId };
 }
 
+/* ---------- GET ---------- */
+
 export async function GET(
     _req: Request,
-    context: { params: Promise<{ chatId: string }> }
+    { params }: { params: Promise<{ chatId: string }> }
 ) {
-    const { chatId } = await context.params;
+    const { chatId } = await params; // ✅ FIX
 
     const access = await requireRoomAccess(chatId);
     if (!access.ok) return access.response;
@@ -50,32 +72,46 @@ export async function GET(
             content: true,
             createdAt: true,
             senderId: true,
-            sender: { select: { displayName: true, username: true } },
+            sender: {
+                select: {
+                    displayName: true,
+                    username: true,
+                },
+            },
         },
     });
 
     return NextResponse.json(messages);
 }
 
+/* ---------- POST ---------- */
+
 export async function POST(
     req: Request,
-    context: { params: Promise<{ chatId: string }> }
+    { params }: { params: Promise<{ chatId: string }> }
 ) {
-    const { chatId } = await context.params;
+    const { chatId } = await params; // ✅ FIX
 
     const access = await requireRoomAccess(chatId);
     if (!access.ok) return access.response;
 
-    let body: any;
+    let body: CreateMessageBody;
+
     try {
-        body = await req.json();
+        body = (await req.json()) as CreateMessageBody;
     } catch {
-        return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+        return NextResponse.json(
+            { error: "Invalid JSON" },
+            { status: 400 }
+        );
     }
 
-    const text = String(body?.content ?? "").trim();
+    const text = body.content.trim();
     if (!text) {
-        return NextResponse.json({ error: "Empty message" }, { status: 400 });
+        return NextResponse.json(
+            { error: "Empty message" },
+            { status: 400 }
+        );
     }
 
     const created = await prisma.message.create({
@@ -89,7 +125,12 @@ export async function POST(
             content: true,
             createdAt: true,
             senderId: true,
-            sender: { select: { displayName: true, username: true } },
+            sender: {
+                select: {
+                    displayName: true,
+                    username: true,
+                },
+            },
         },
     });
 

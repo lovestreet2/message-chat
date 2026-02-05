@@ -2,25 +2,25 @@
 
 import * as React from "react";
 import { Send, Paperclip, Smile } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import {
     Popover,
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
+import { Input } from "../ui/input";
 
 interface MessageInputProps {
     onSend?: (text: string) => Promise<void> | void;
-
-    /** Called when user picks files */
     onFiles?: (files: FileList) => Promise<void> | void;
+
+    /** Typing indicator hooks */
+    onTypingStart?: () => void;
+    onTypingStop?: () => void;
 
     placeholder?: string;
     disabled?: boolean;
-
-    /** Limit for files */
-    accept?: string; // e.g. "image/*,video/*"
+    accept?: string;
     multiple?: boolean;
 }
 
@@ -29,6 +29,8 @@ const QUICK_EMOJIS = ["😀", "😂", "😍", "🥹", "😎", "🤝", "🔥", "�
 export default function MessageInput({
     onSend,
     onFiles,
+    onTypingStart,
+    onTypingStop,
     placeholder = "Type a message…",
     disabled = false,
     accept = "image/*,video/*,application/pdf",
@@ -40,17 +42,38 @@ export default function MessageInput({
 
     const fileRef = React.useRef<HTMLInputElement | null>(null);
     const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+    const typingTimeout = React.useRef<NodeJS.Timeout | null>(null);
 
     const canSend = value.trim().length > 0 && !disabled && !sending;
 
-    // Auto-grow textarea
+    /* ----------------------------------
+       Auto-grow textarea
+    ----------------------------------- */
     React.useEffect(() => {
         const el = textareaRef.current;
         if (!el) return;
         el.style.height = "0px";
-        el.style.height = Math.min(el.scrollHeight, 160) + "px"; // cap height
+        el.style.height = Math.min(el.scrollHeight, 160) + "px";
     }, [value]);
 
+    /* ----------------------------------
+       Typing indicator (debounced)
+    ----------------------------------- */
+    function handleTyping() {
+        onTypingStart?.();
+
+        if (typingTimeout.current) {
+            clearTimeout(typingTimeout.current);
+        }
+
+        typingTimeout.current = setTimeout(() => {
+            onTypingStop?.();
+        }, 800);
+    }
+
+    /* ----------------------------------
+       Send message
+    ----------------------------------- */
     async function handleSend() {
         if (!canSend || !onSend) {
             setValue("");
@@ -59,6 +82,7 @@ export default function MessageInput({
 
         const text = value.trim();
         setSending(true);
+        onTypingStop?.();
 
         try {
             await onSend(text);
@@ -70,7 +94,6 @@ export default function MessageInput({
     }
 
     function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-        // Enter sends, Shift+Enter adds newline
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             void handleSend();
@@ -89,7 +112,6 @@ export default function MessageInput({
         try {
             await onFiles?.(files);
         } finally {
-            // allow re-selecting the same file
             e.target.value = "";
             textareaRef.current?.focus();
         }
@@ -99,14 +121,14 @@ export default function MessageInput({
         setValue((prev) => prev + emoji);
         setEmojiOpen(false);
         textareaRef.current?.focus();
+        handleTyping();
     }
 
     return (
         <div className="border-t border-white/10 bg-white/5 backdrop-blur-xl p-2 sm:p-3">
-            {/* Input shell */}
             <div className="relative w-full">
                 {/* Hidden file input */}
-                <input
+                <Input
                     ref={fileRef}
                     type="file"
                     className="hidden"
@@ -115,15 +137,14 @@ export default function MessageInput({
                     onChange={onFileChange}
                 />
 
-                {/* Left inside icons */}
+                {/* Left icons */}
                 <div className="absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center gap-1">
                     <Button
                         type="button"
                         variant="ghost"
                         onClick={openFilePicker}
                         disabled={disabled || sending || !onFiles}
-                        className="h-9 w-9 p-0 text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-40"
-                        aria-label="Attach file"
+                        className="h-9 w-9 p-0 text-white/70 hover:bg-white/10"
                     >
                         <Paperclip className="h-5 w-5" />
                     </Button>
@@ -134,8 +155,7 @@ export default function MessageInput({
                                 type="button"
                                 variant="ghost"
                                 disabled={disabled || sending}
-                                className="h-9 w-9 p-0 text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-40"
-                                aria-label="Emoji"
+                                className="h-9 w-9 p-0 text-white/70 hover:bg-white/10"
                             >
                                 <Smile className="h-5 w-5" />
                             </Button>
@@ -144,17 +164,15 @@ export default function MessageInput({
                         <PopoverContent
                             side="top"
                             align="start"
-                            className="w-64 border-white/10 bg-[#0f172a]/95 text-white shadow-xl"
+                            className="w-64 border-white/10 bg-[#0f172a]/95 text-white"
                         >
-                            <div className="text-xs text-white/60 mb-2">Quick emojis</div>
                             <div className="grid grid-cols-5 gap-2">
                                 {QUICK_EMOJIS.map((e) => (
                                     <button
                                         key={e}
                                         type="button"
                                         onClick={() => insertEmoji(e)}
-                                        className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/5 text-lg hover:bg-white/10"
-                                        aria-label={`Insert ${e}`}
+                                        className="grid h-10 w-10 place-items-center rounded-lg bg-white/5 hover:bg-white/10"
                                     >
                                         {e}
                                     </button>
@@ -168,7 +186,10 @@ export default function MessageInput({
                 <textarea
                     ref={textareaRef}
                     value={value}
-                    onChange={(e) => setValue(e.target.value)}
+                    onChange={(e) => {
+                        setValue(e.target.value);
+                        handleTyping();
+                    }}
                     onKeyDown={onKeyDown}
                     placeholder={placeholder}
                     disabled={disabled || sending}
@@ -176,29 +197,24 @@ export default function MessageInput({
                     className="
             w-full resize-none rounded-2xl border border-white/10 bg-white/10
             text-white placeholder:text-white/40
-            focus:outline-none focus:ring-2 focus:ring-cyan-400/40
-            py-3
-            pl-[92px] pr-[56px]
-            leading-5
+            focus:ring-2 focus:ring-cyan-400/40
+            py-3 pl-[92px] pr-[56px]
           "
                 />
 
-                {/* Send button inside right */}
-                <button
+                {/* Send */}
+                <Button
                     type="button"
                     onClick={() => void handleSend()}
                     disabled={!canSend}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 grid h-10 w-10 place-items-center rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 transition hover:opacity-90 disabled:opacity-40"
-                    aria-label="Send message"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950"
                 >
                     <Send className="h-5 w-5" />
-                </button>
+                </Button>
             </div>
 
-            {/* Hint */}
-            <div className="mt-1 px-1 text-[11px] text-white/40">
-                Press <span className="text-white/60">Enter</span> to send •{" "}
-                <span className="text-white/60">Shift+Enter</span> for new line
+            <div className="mt-1 text-[11px] text-white/40">
+                Enter to send • Shift+Enter for new line
             </div>
         </div>
     );

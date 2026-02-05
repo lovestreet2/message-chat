@@ -5,12 +5,14 @@ import React from "react";
 export type ChatItem = {
     id: string;
     name: string;
-    lastMessage: string;
-    time: string;
-    unread?: number;
-    avatarUrl?: string | null; // ✅ rename from avatar
+    avatarUrl?: string | null;
     isGroup?: boolean;
-    active?: boolean; // ✅ to highlight selected chat
+    userId?: string;
+    online?: boolean;
+    lastMessage?: string;
+    time?: string;
+    unread?: number;
+    active?: boolean;
 };
 
 interface ChatListItemProps {
@@ -45,7 +47,6 @@ export default function ChatListItem({ chat, onClick }: ChatListItemProps) {
           text-slate-950 font-bold transition-transform group-hover:scale-[1.03]"
                 >
                     {chat.avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                             src={chat.avatarUrl}
                             alt={chat.name}

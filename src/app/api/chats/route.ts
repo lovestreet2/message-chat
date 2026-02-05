@@ -3,16 +3,26 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 
+export const dynamic = "force-dynamic"; // ✅ REQUIRED
+
 export async function GET() {
     const session = await getServerSession(authOptions);
+
     if (!session?.user) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        return NextResponse.json(
+            { error: "Unauthorized" },
+            { status: 401 }
+        );
     }
 
-    const userId = (session.user as any).id as string;
+    const userId = session.user.id;
 
     const rooms = await prisma.room.findMany({
-        where: { members: { some: { userId } } },
+        where: {
+            members: {
+                some: { userId },
+            },
+        },
         orderBy: { createdAt: "desc" },
         select: {
             id: true,
@@ -20,7 +30,14 @@ export async function GET() {
             isGroup: true,
             members: {
                 select: {
-                    user: { select: { id: true, displayName: true, username: true, avatarUrl: true } },
+                    user: {
+                        select: {
+                            id: true,
+                            displayName: true,
+                            username: true,
+                            avatarUrl: true,
+                        },
+                    },
                 },
             },
             messages: {
@@ -30,35 +47,52 @@ export async function GET() {
                     id: true,
                     content: true,
                     createdAt: true,
-                    sender: { select: { displayName: true, username: true } },
+                    sender: {
+                        select: {
+                            displayName: true,
+                            username: true,
+                        },
+                    },
                 },
             },
         },
     });
 
-    const chats = rooms.map((r) => {
-        const last = r.messages[0] ?? null;
+    const chats = rooms.map((room) => {
+        const last = room.messages[0] ?? null;
 
-        // For 1:1 chat name fallback
-        let title = r.name;
+        let title = room.name;
         let avatarUrl: string | null = null;
+        let otherUserId: string | null = null;
 
-        if (!r.isGroup) {
-            const other = r.members.map((m) => m.user).find((u) => u.id !== userId);
-            title = other?.displayName ?? other?.username ?? "Direct";
-            avatarUrl = other?.avatarUrl ?? null;
+        if (!room.isGroup) {
+            const otherUser = room.members
+                .map((m) => m.user)
+                .find((u) => u.id !== userId);
+
+            title =
+                otherUser?.displayName ??
+                otherUser?.username ??
+                "Direct";
+
+            avatarUrl = otherUser?.avatarUrl ?? null;
+            otherUserId = otherUser?.id ?? null;
         }
 
         return {
-            id: r.id,
+            id: room.id,
             name: title,
-            isGroup: r.isGroup,
+            isGroup: room.isGroup,
             avatarUrl,
+            otherUserId, // ✅ used by Socket.IO presence
             lastMessage: last
                 ? {
                     text: last.content,
                     at: last.createdAt,
-                    sender: last.sender?.displayName ?? last.sender?.username ?? "",
+                    sender:
+                        last.sender?.displayName ??
+                        last.sender?.username ??
+                        "",
                 }
                 : null,
         };

@@ -19,6 +19,9 @@ interface ChatLayoutProps {
     /** active chat id from parent (single source of truth) */
     activeChatId?: string | null;
 
+    /** authenticated user id (REQUIRED for presence) */
+    sessionUserId: string;
+
     /** send handler */
     onSendMessage?: (text: string) => Promise<void> | void;
 
@@ -33,14 +36,14 @@ export default function ChatLayout({
     messages,
     onChatSelect,
     activeChatId = null,
+    sessionUserId,
     onSendMessage,
     onFiles,
     onBackToList,
 }: ChatLayoutProps) {
-    // store only selected id (not full object) to prevent stale chat object
     const [selectedId, setSelectedId] = useState<string | null>(null);
 
-    // ✅ selected chat always derived from latest chats list
+    /* ✅ Always derive selected chat from latest list */
     const selected = useMemo(() => {
         const id = selectedId ?? activeChatId;
         if (!id) return null;
@@ -85,22 +88,25 @@ export default function ChatLayout({
             >
                 {selected ? (
                     <>
-                        {/* Header */}
+                        {/* Header (presence-aware) */}
                         <ChatHeader
                             chat={selected}
+                            sessionUserId={sessionUserId}
                             onBack={() => {
-                                setSelectedId(null);      // ✅ show chat list on mobile
-                                onBackToList?.();         // ✅ optional: clear active chat in parent
+                                setSelectedId(null);
+                                onBackToList?.();
                             }}
                         />
-
 
                         {/* Messages */}
                         <MessageList messages={messages} />
 
                         {/* Input */}
                         <div className="sticky bottom-0">
-                            <MessageInput onSend={onSendMessage} onFiles={onFiles} />
+                            <MessageInput
+                                onSend={onSendMessage}
+                                onFiles={onFiles}
+                            />
                         </div>
                     </>
                 ) : (

@@ -2,13 +2,19 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
+type RegisterBody = {
+    username?: string;
+    email?: string;
+    password?: string;
+};
+
 export async function POST(req: Request) {
     try {
-        const body = await req.json();
+        const body: RegisterBody = await req.json();
 
-        const username: string = body.username;
-        const email: string = body.email;
-        const password: string = body.password;
+        const username = body.username?.trim();
+        const email = body.email?.trim();
+        const password = body.password;
 
         if (!username || !email || !password) {
             return NextResponse.json(
@@ -21,23 +27,23 @@ export async function POST(req: Request) {
             where: {
                 OR: [{ email }, { username }],
             },
+            select: { id: true },
         });
 
         if (exists) {
             return NextResponse.json(
                 { message: "User already exists" },
-                { status: 400 }
+                { status: 409 }
             );
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // 🔥 THIS LINE IS REQUIRED
         await prisma.user.create({
             data: {
                 username,
                 email,
-                displayName: username, // ✅ REQUIRED FIELD
+                displayName: username, // ✅ required field
                 password: hashedPassword,
             },
         });
@@ -46,10 +52,14 @@ export async function POST(req: Request) {
             { message: "User registered successfully" },
             { status: 201 }
         );
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("REGISTER ERROR:", error);
+
+        const message =
+            error instanceof Error ? error.message : "Server error";
+
         return NextResponse.json(
-            { message: error.message || "Server error" },
+            { message },
             { status: 500 }
         );
     }

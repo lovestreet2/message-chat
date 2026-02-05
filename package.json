@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "node server/socket.ts",
     "build": "next build --webpack",
     "start": "NODE_ENV=production tsx server/socket.ts",
     "postinstall": "prisma generate",
@@ -47,6 +47,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
+    "eslint-plugin-next": "^0.0.0",
     "eslint-scope": "^9.1.0",
     "glob": "^13.0.0",
     "minimatch": "^10.1.1",

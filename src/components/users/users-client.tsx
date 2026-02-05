@@ -71,12 +71,16 @@ export default function UsersClient() {
             const json = await res.json();
             if (!res.ok) throw new Error(json?.error ?? "Failed to load users");
             setData(json);
-        } catch (e: any) {
-            setErr(e?.message ?? "Something went wrong");
-            setData(null);
+        } catch (e: unknown) {
+            if (e instanceof Error) {
+                setErr(e.message);
+            } else {
+                setErr("Something went wrong");
+            }
         } finally {
             setLoading(false);
         }
+
     }
 
     React.useEffect(() => {
@@ -100,9 +104,10 @@ export default function UsersClient() {
             const json = await res.json();
             if (!res.ok) throw new Error(json?.error ?? "Restore failed");
             await load();
-        } catch (e: any) {
-            setErr(e?.message ?? "Restore failed");
+        } catch (e: unknown) {
+            setErr(e instanceof Error ? e.message : "Restore failed");
         }
+
     }
 
     async function softDeleteUser(id: string) {
@@ -115,8 +120,8 @@ export default function UsersClient() {
             const json = await res.json();
             if (!res.ok) throw new Error(json?.error ?? "Delete failed");
             await load();
-        } catch (e: any) {
-            setErr(e?.message ?? "Delete failed");
+        } catch (e: unknown) {
+            setErr(e instanceof Error ? e.message : "Delete failed");
         }
     }
 
@@ -156,6 +161,7 @@ export default function UsersClient() {
                     />
 
                     <select
+                        aria-label="Filter users by status"
                         value={status}
                         onChange={(e) => {
                             setStatus(e.target.value);
@@ -164,6 +170,7 @@ export default function UsersClient() {
                         }}
                         className="h-10 rounded-md border border-white/20 bg-white/10 px-3 text-white"
                     >
+
                         <option value="active">Active</option>
                         <option value="deleted">Deleted</option>
                         <option value="all">All</option>
@@ -196,11 +203,15 @@ export default function UsersClient() {
                                     <div className="flex items-center gap-3">
                                         <div className="h-12 w-12 rounded-full overflow-hidden bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center font-bold">
                                             {u.avatarUrl ? (
-                                                // eslint-disable-next-line @next/next/no-img-element
-                                                <img src={u.avatarUrl} alt={u.displayName} className="h-full w-full object-cover" />
+                                                <img
+                                                    src={u.avatarUrl}
+                                                    alt={u.displayName || u.username}
+                                                    className="h-full w-full object-cover"
+                                                />
                                             ) : (
                                                 <span>{initials(u.displayName || u.username)}</span>
                                             )}
+
                                         </div>
 
                                         <div className="min-w-0">

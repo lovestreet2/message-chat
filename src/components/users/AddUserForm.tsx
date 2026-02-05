@@ -45,12 +45,16 @@ export default function AddUserForm() {
 
             router.push("/users"); // ✅ go to users list after success
             router.refresh();
-        } catch (err: any) {
-            // ✅ handles unexpected runtime errors
-            setErr(err?.message ?? "Failed to add user");
+        } catch (e: unknown) {
+            if (e instanceof Error) {
+                setErr(e.message);
+            } else {
+                setErr("Something went wrong");
+            }
         } finally {
             setLoading(false);
         }
+
     }
 
 

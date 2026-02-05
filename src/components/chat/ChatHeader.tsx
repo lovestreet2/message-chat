@@ -4,29 +4,32 @@ import * as React from "react";
 import { ArrowLeft, Phone, Video, MoreVertical } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+    onUserStatusChange,
+    onTyping,
+    emitOnline,
+    emitOffline,
+    type UserStatusPayload,
+    getSocket,
+} from "@/lib/socket";
+
+/* ------------------------------------------------------------------ */
+/* Types                                                              */
+/* ------------------------------------------------------------------ */
 
 export type Chat = {
     id: string;
     name: string;
     avatarUrl?: string | null;
     isGroup?: boolean;
+    userId?: string; // other user (1:1 only)
 };
 
-type PresenceStatus = "online" | "offline" | "typing" | "away";
+type PresenceStatus = "online" | "offline" | "typing";
 
-interface ChatHeaderProps {
-    chat: Chat;
-    onBack?: () => void;
-
-    status?: PresenceStatus;
-    subtitle?: string;
-
-    onCall?: () => void;
-    onVideoCall?: () => void;
-    onMore?: () => void;
-
-    showActions?: boolean;
-}
+/* ------------------------------------------------------------------ */
+/* Utils                                                              */
+/* ------------------------------------------------------------------ */
 
 function initials(name: string) {
     return name
@@ -37,154 +40,170 @@ function initials(name: string) {
         .join("");
 }
 
-function statusText(status: PresenceStatus, isGroup?: boolean) {
-    if (isGroup) return "Group chat";
-    switch (status) {
-        case "online":
-            return "Online";
-        case "away":
-            return "Away";
-        case "typing":
-            return "Typing…";
-        default:
-            return "Offline";
-    }
+function timeAgo(ts: number) {
+    const diff = Math.floor((Date.now() - ts) / 1000);
+
+    if (diff < 10) return "just now";
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
 }
 
-function statusDotClass(status: PresenceStatus) {
-    switch (status) {
-        case "online":
-            return "bg-emerald-400";
-        case "typing":
-            return "bg-cyan-400";
-        case "away":
-            return "bg-amber-400";
-        default:
-            return "bg-zinc-500";
-    }
+/* ------------------------------------------------------------------ */
+/* Component                                                          */
+/* ------------------------------------------------------------------ */
+
+interface ChatHeaderProps {
+    chat: Chat;
+    sessionUserId: string;
+    onBack?: () => void;
+    showActions?: boolean;
 }
 
 export default function ChatHeader({
     chat,
+    sessionUserId,
     onBack,
-    status = "online",
-    subtitle,
-    onCall,
-    onVideoCall,
-    onMore,
     showActions = true,
 }: ChatHeaderProps) {
-    const sub = subtitle ?? statusText(status, chat.isGroup);
+    const [status, setStatus] = React.useState<PresenceStatus>("offline");
+    const [lastSeen, setLastSeen] = React.useState<number | null>(null);
 
-    const handleBack = React.useCallback(
-        (e: React.MouseEvent) => {
-            e.preventDefault();
-            e.stopPropagation(); // ✅ prevents parent click handlers from swallowing
-            onBack?.();
-        },
-        [onBack]
-    );
+    /* --------------------------------------------------
+       Emit OWN online/offline (once per session)
+    --------------------------------------------------- */
+    React.useEffect(() => {
+        if (!sessionUserId) return;
 
+        const socket = getSocket();
+
+        if (socket.connected) {
+            emitOnline(sessionUserId);
+        } else {
+            socket.once("connect", () => emitOnline(sessionUserId));
+        }
+
+        return () => {
+            emitOffline(sessionUserId);
+        };
+    }, [sessionUserId]);
+
+
+    /* --------------------------------------------------
+       Presence (online / offline)
+    --------------------------------------------------- */
+    React.useEffect(() => {
+        if (chat.isGroup || !chat.userId) return;
+
+        return onUserStatusChange(
+            ({ userId, online, lastSeen }: UserStatusPayload) => {
+                if (userId !== chat.userId) return;
+
+                setStatus(online ? "online" : "offline");
+                if (!online && lastSeen) setLastSeen(lastSeen);
+            }
+        );
+    }, [chat.isGroup, chat.userId]);
+
+    /* --------------------------------------------------
+       Typing indicator
+    --------------------------------------------------- */
+    React.useEffect(() => {
+        if (chat.isGroup || !chat.userId) return;
+
+        return onTyping(({ fromUserId, typing }) => {
+            if (fromUserId !== chat.userId) return;
+            setStatus(typing ? "typing" : "online");
+        });
+    }, [chat.isGroup, chat.userId]);
+
+    /* --------------------------------------------------
+       Subtitle text
+    --------------------------------------------------- */
+    const subtitle = chat.isGroup
+        ? "Group chat"
+        : status === "typing"
+            ? "Typing…"
+            : status === "online"
+                ? "Online"
+                : lastSeen
+                    ? `Last seen ${timeAgo(lastSeen)}`
+                    : "Offline";
+
+    /* --------------------------------------------------
+       UI
+    --------------------------------------------------- */
     return (
         <header className="sticky top-0 z-30 h-16 px-3 sm:px-4 flex items-center justify-between border-b border-white/10 bg-white/5 backdrop-blur-xl">
             {/* Left */}
             <div className="flex items-center gap-3 min-w-0">
-                {/* Back (mobile only) */}
-                {onBack ? (
+                {onBack && (
                     <Button
-                        type="button"
                         variant="ghost"
-                        onClick={handleBack}
+                        onClick={onBack}
                         className="md:hidden h-9 w-9 p-0 text-white/80 hover:text-white hover:bg-white/10"
-                        aria-label="Go back"
+                        aria-label="Back"
                     >
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
-                ) : null}
+                )}
 
                 {/* Avatar */}
                 <div className="relative">
                     <Avatar className="h-10 w-10 border border-white/10">
-                        <AvatarImage src={chat.avatarUrl ?? undefined} alt={chat.name} />
+                        <AvatarImage src={chat.avatarUrl ?? undefined} />
                         <AvatarFallback className="bg-white/10 text-white">
                             {initials(chat.name)}
                         </AvatarFallback>
                     </Avatar>
 
-                    {!chat.isGroup ? (
+                    {!chat.isGroup && (
                         <span
-                            className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border border-[#0f172a] ${statusDotClass(
-                                status
-                            )}`}
-                            aria-hidden="true"
+                            className={[
+                                "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border border-[#0f172a]",
+                                status === "online"
+                                    ? "bg-emerald-400"
+                                    : status === "typing"
+                                        ? "bg-cyan-400"
+                                        : "bg-zinc-500",
+                            ].join(" ")}
                         />
-                    ) : null}
+                    )}
                 </div>
 
-                {/* Title + subtitle */}
+                {/* Title */}
                 <div className="min-w-0">
-                    <h2 className="text-white font-semibold truncate">{chat.name}</h2>
-
-                    <div className="flex items-center gap-2">
-                        {!chat.isGroup ? (
-                            <span
-                                className={`h-2 w-2 rounded-full ${statusDotClass(status)}`}
-                                aria-hidden="true"
-                            />
-                        ) : null}
-
-                        <p
-                            className={[
-                                "text-xs truncate",
-                                status === "typing"
-                                    ? "text-cyan-300"
-                                    : status === "online"
-                                        ? "text-emerald-300"
-                                        : "text-white/60",
-                            ].join(" ")}
-                        >
-                            {sub}
-                        </p>
-                    </div>
+                    <h2 className="font-semibold truncate">{chat.name}</h2>
+                    <p
+                        className={[
+                            "text-xs truncate",
+                            status === "typing"
+                                ? "text-cyan-300"
+                                : status === "online"
+                                    ? "text-emerald-300"
+                                    : "text-white/60",
+                        ].join(" ")}
+                    >
+                        {subtitle}
+                    </p>
                 </div>
             </div>
 
             {/* Right actions */}
-            {showActions ? (
+            {showActions && (
                 <div className="flex items-center gap-1">
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={onCall}
-                        disabled={!onCall}
-                        className="h-9 w-9 p-0 text-white/75 hover:text-white hover:bg-white/10 disabled:opacity-40"
-                        aria-label="Voice call"
-                    >
+                    <Button variant="ghost" className="h-9 w-9 p-0">
                         <Phone className="h-5 w-5" />
                     </Button>
-
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={onVideoCall}
-                        disabled={!onVideoCall}
-                        className="h-9 w-9 p-0 text-white/75 hover:text-white hover:bg-white/10 disabled:opacity-40"
-                        aria-label="Video call"
-                    >
+                    <Button variant="ghost" className="h-9 w-9 p-0">
                         <Video className="h-5 w-5" />
                     </Button>
-
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={onMore}
-                        className="h-9 w-9 p-0 text-white/75 hover:text-white hover:bg-white/10"
-                        aria-label="More options"
-                    >
+                    <Button variant="ghost" className="h-9 w-9 p-0">
                         <MoreVertical className="h-5 w-5" />
                     </Button>
                 </div>
-            ) : null}
+            )}
         </header>
     );
 }

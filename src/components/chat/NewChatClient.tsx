@@ -50,8 +50,14 @@ export default function NewChatClient() {
                 if (!res.ok) throw new Error("Search failed");
                 const data = (await res.json()) as UserResult[];
                 if (!ignore) setResults(data);
-            } catch (e: any) {
-                if (!ignore) setError(e?.message ?? "Something went wrong");
+            } catch (e: unknown) {
+                if (ignore) return;
+
+                if (e instanceof Error) {
+                    setError(e.message);
+                } else {
+                    setError("Something went wrong");
+                }
             } finally {
                 if (!ignore) setLoading(false);
             }
@@ -69,10 +75,12 @@ export default function NewChatClient() {
         try {
             const roomId = await createOrGetDirectRoom(userId);
             router.push(`/chat/${roomId}`);
-        } catch (e: any) {
-            setError(e?.message ?? "Unable to start chat");
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : "Unable to start chat");
         }
+
     }
+
 
     return (
         <div className="w-full bg-gradient-to-br from-[#0f172a] via-[#1e293b] to-[#0f172a] text-white">

@@ -56,11 +56,16 @@ export default function SettingsClient() {
                 avatarUrl: data.avatarUrl ?? "",
                 bio: data.bio ?? "",
             });
-        } catch (e: any) {
-            setErr(e?.message ?? "Something went wrong");
+        } catch (e: unknown) {
+            if (e instanceof Error) {
+                setErr(e.message);
+            } else {
+                setErr("Something went wrong");
+            }
         } finally {
             setLoading(false);
         }
+
     }
 
     React.useEffect(() => {
@@ -90,8 +95,8 @@ export default function SettingsClient() {
             setOk("Saved!");
             await load();
             setTimeout(() => setOk(null), 1500);
-        } catch (e: any) {
-            setErr(e?.message ?? "Failed to save");
+        } catch (e: unknown) {
+            setErr(e instanceof Error ? e.message : "Failed to save");
         } finally {
             setSaving(false);
         }
